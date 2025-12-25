@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 import gradio
 
-from facefusion import process_manager, state_manager, wording
+from facefusion import process_manager, state_manager, translator
 from facefusion.args import collect_step_args
 from facefusion.core import process_step
 from facefusion.filesystem import is_directory, is_image, is_video
@@ -30,18 +30,18 @@ def render() -> None:
 
 		with gradio.Row(visible = is_instant_runner) as INSTANT_RUNNER_WRAPPER:
 			INSTANT_RUNNER_START_BUTTON = gradio.Button(
-				value = wording.get('uis.start_button'),
+				value = translator.get('uis.start_button'),
 				variant = 'primary',
 				size = 'sm'
 			)
 			INSTANT_RUNNER_STOP_BUTTON = gradio.Button(
-				value = wording.get('uis.stop_button'),
+				value = translator.get('uis.stop_button'),
 				variant = 'primary',
 				size = 'sm',
 				visible = False
 			)
 			INSTANT_RUNNER_CLEAR_BUTTON = gradio.Button(
-				value = wording.get('uis.clear_button'),
+				value = translator.get('uis.clear_button'),
 				size = 'sm'
 			)
 
@@ -54,7 +54,7 @@ def listen() -> None:
 	if output_image and output_video:
 		INSTANT_RUNNER_START_BUTTON.click(start, outputs = [ INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON ])
 		INSTANT_RUNNER_START_BUTTON.click(run, outputs = [ INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON, output_image, output_video ])
-		INSTANT_RUNNER_STOP_BUTTON.click(stop, outputs = [ INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON ])
+		INSTANT_RUNNER_STOP_BUTTON.click(stop, outputs = [ INSTANT_RUNNER_START_BUTTON, INSTANT_RUNNER_STOP_BUTTON, output_image, output_video ])
 		INSTANT_RUNNER_CLEAR_BUTTON.click(clear, outputs = [ output_image, output_video ])
 	if ui_workflow_dropdown:
 		ui_workflow_dropdown.change(remote_update, inputs = ui_workflow_dropdown, outputs = INSTANT_RUNNER_WRAPPER)
@@ -97,9 +97,9 @@ def create_and_run_job(step_args : Args) -> bool:
 	return job_manager.create_job(job_id) and job_manager.add_step(job_id, step_args) and job_manager.submit_job(job_id) and job_runner.run_job(job_id, process_step)
 
 
-def stop() -> Tuple[gradio.Button, gradio.Button]:
+def stop() -> Tuple[gradio.Button, gradio.Button, gradio.Image, gradio.Video]:
 	process_manager.stop()
-	return gradio.Button(visible = True), gradio.Button(visible = False)
+	return gradio.Button(visible = True), gradio.Button(visible = False), gradio.Image(value = None), gradio.Video(value = None)
 
 
 def clear() -> Tuple[gradio.Image, gradio.Video]:

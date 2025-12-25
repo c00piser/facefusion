@@ -11,12 +11,18 @@ from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.types import Age, DownloadScope, FaceLandmark5, Gender, InferencePool, ModelOptions, ModelSet, Race, VisionFrame
 
 
-@lru_cache(maxsize = None)
+@lru_cache()
 def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	return\
 	{
 		'fairface':
 		{
+			'__metadata__':
+			{
+				'vendor': 'dchen236',
+				'license': 'Non-Commercial',
+				'year': 2021
+			},
 			'hashes':
 			{
 				'face_classifier':

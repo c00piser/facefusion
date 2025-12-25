@@ -2,8 +2,8 @@ from typing import Optional, Tuple
 
 import gradio
 
-from facefusion import state_manager, wording
-from facefusion.face_store import clear_reference_faces, clear_static_faces
+from facefusion import state_manager, translator
+from facefusion.face_store import clear_static_faces
 from facefusion.filesystem import is_image, is_video
 from facefusion.uis.core import register_ui_component
 from facefusion.uis.types import ComponentOptions, File
@@ -21,7 +21,7 @@ def render() -> None:
 	is_target_image = is_image(state_manager.get_item('target_path'))
 	is_target_video = is_video(state_manager.get_item('target_path'))
 	TARGET_FILE = gradio.File(
-		label = wording.get('uis.target_file'),
+		label = translator.get('uis.target_file'),
 		value = state_manager.get_item('target_path') if is_target_image or is_target_video else None
 	)
 	target_image_options : ComponentOptions =\
@@ -51,7 +51,6 @@ def listen() -> None:
 
 
 def update(file : File) -> Tuple[gradio.Image, gradio.Video]:
-	clear_reference_faces()
 	clear_static_faces()
 
 	if file and is_image(file.name):

@@ -4,23 +4,30 @@ from typing import List, Tuple
 import numpy
 from tqdm import tqdm
 
-from facefusion import inference_manager, state_manager, wording
+from facefusion import inference_manager, state_manager, translator
+from facefusion.common_helper import is_macos
 from facefusion.download import conditional_download_hashes, conditional_download_sources, resolve_download_url
 from facefusion.execution import has_execution_provider
 from facefusion.filesystem import resolve_relative_path
 from facefusion.thread_helper import conditional_thread_semaphore
 from facefusion.types import Detection, DownloadScope, DownloadSet, ExecutionProvider, Fps, InferencePool, ModelSet, VisionFrame
-from facefusion.vision import detect_video_fps, fit_frame, read_image, read_video_frame
+from facefusion.vision import detect_video_fps, fit_contain_frame, read_image, read_video_frame
 
 STREAM_COUNTER = 0
 
 
-@lru_cache(maxsize = None)
+@lru_cache()
 def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 	return\
 	{
 		'nsfw_1':
 		{
+			'__metadata__':
+			{
+				'vendor': 'EraX',
+				'license': 'Apache-2.0',
+				'year': 2024
+			},
 			'hashes':
 			{
 				'content_analyser':
@@ -43,6 +50,12 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 		},
 		'nsfw_2':
 		{
+			'__metadata__':
+			{
+				'vendor': 'Marqo',
+				'license': 'Apache-2.0',
+				'year': 2024
+			},
 			'hashes':
 			{
 				'content_analyser':
@@ -65,6 +78,12 @@ def create_static_model_set(download_scope : DownloadScope) -> ModelSet:
 		},
 		'nsfw_3':
 		{
+			'__metadata__':
+			{
+				'vendor': 'Freepik',
+				'license': 'MIT',
+				'year': 2025
+			},
 			'hashes':
 			{
 				'content_analyser':
@@ -101,7 +120,7 @@ def clear_inference_pool() -> None:
 
 
 def resolve_execution_providers() -> List[ExecutionProvider]:
-	if has_execution_provider('coreml'):
+	if is_macos() and has_execution_provider('coreml'):
 		return [ 'cpu' ]
 	return state_manager.get_item('execution_providers')
 
@@ -137,13 +156,13 @@ def analyse_frame(vision_frame : VisionFrame) -> bool:
 	return detect_nsfw(vision_frame)
 
 
-@lru_cache(maxsize = None)
+@lru_cache()
 def analyse_image(image_path : str) -> bool:
 	vision_frame = read_image(image_path)
 	return analyse_frame(vision_frame)
 
 
-@lru_cache(maxsize = None)
+@lru_cache()
 def analyse_video(video_path : str, trim_frame_start : int, trim_frame_end : int) -> bool:
 	video_fps = detect_video_fps(video_path)
 	frame_range = range(trim_frame_start, trim_frame_end)
@@ -151,16 +170,19 @@ def analyse_video(video_path : str, trim_frame_start : int, trim_frame_end : int
 	total = 0
 	counter = 0
 
-	with tqdm(total = len(frame_range), desc = wording.get('analysing'), unit = 'frame', ascii = ' =', disable = state_manager.get_item('log_level') in [ 'warn', 'error' ]) as progress:
+	with tqdm(total = len(frame_range), desc = translator.get('analysing'), unit = 'frame', ascii = ' =', disable = state_manager.get_item('log_level') in [ 'warn', 'error' ]) as progress:
 
 		for frame_number in frame_range:
 			if frame_number % int(video_fps) == 0:
 				vision_frame = read_video_frame(video_path, frame_number)
 				total += 1
+
 				if analyse_frame(vision_frame):
 					counter += 1
+
 			if counter > 0 and total > 0:
 				rate = counter / total * 100
+
 			progress.set_postfix(rate = rate)
 			progress.update()
 
@@ -196,8 +218,8 @@ def detect_with_nsfw_3(vision_frame : VisionFrame) -> bool:
 	return bool(detection_score > 10.5)
 
 
-def forward_nsfw(vision_frame : VisionFrame, nsfw_model : str) -> Detection:
-	content_analyser = get_inference_pool().get(nsfw_model)
+def forward_nsfw(vision_frame : VisionFrame, model_name : str) -> Detection:
+	content_analyser = get_inference_pool().get(model_name)
 
 	with conditional_thread_semaphore():
 		detection = content_analyser.run(None,
@@ -205,7 +227,7 @@ def forward_nsfw(vision_frame : VisionFrame, nsfw_model : str) -> Detection:
 			'input': vision_frame
 		})[0]
 
-	if nsfw_model in [ 'nsfw_2', 'nsfw_3' ]:
+	if model_name in [ 'nsfw_2', 'nsfw_3' ]:
 		return detection[0]
 
 	return detection
@@ -217,7 +239,7 @@ def prepare_detect_frame(temp_vision_frame : VisionFrame, model_name : str) -> V
 	model_mean = model_set.get('mean')
 	model_standard_deviation = model_set.get('standard_deviation')
 
-	detect_vision_frame = fit_frame(temp_vision_frame, model_size)
+	detect_vision_frame = fit_contain_frame(temp_vision_frame, model_size)
 	detect_vision_frame = detect_vision_frame[:, :, ::-1] / 255.0
 	detect_vision_frame -= model_mean
 	detect_vision_frame /= model_standard_deviation

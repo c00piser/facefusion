@@ -6,34 +6,38 @@ import cv2
 import numpy
 from cv2.typing import Size
 
-import facefusion.choices
 from facefusion.common_helper import is_windows
 from facefusion.filesystem import get_file_extension, is_image, is_video
 from facefusion.thread_helper import thread_semaphore
-from facefusion.types import Duration, Fps, Orientation, Resolution, VisionFrame
+from facefusion.types import ColorMode, Duration, Fps, Mask, Orientation, Resolution, Scale, VisionFrame
 from facefusion.video_manager import get_video_capture
 
 
-@lru_cache()
-def read_static_image(image_path : str) -> Optional[VisionFrame]:
-	return read_image(image_path)
-
-
-def read_static_images(image_paths : List[str]) -> List[VisionFrame]:
-	frames = []
+def read_static_images(image_paths : List[str], color_mode : ColorMode = 'rgb') -> List[VisionFrame]:
+	vision_frames = []
 
 	if image_paths:
 		for image_path in image_paths:
-			frames.append(read_static_image(image_path))
-	return frames
+			vision_frames.append(read_static_image(image_path, color_mode))
+	return vision_frames
 
 
-def read_image(image_path : str) -> Optional[VisionFrame]:
+@lru_cache(maxsize = 64)
+def read_static_image(image_path : str, color_mode : ColorMode = 'rgb') -> Optional[VisionFrame]:
+	return read_image(image_path, color_mode)
+
+
+def read_image(image_path : str, color_mode : ColorMode = 'rgb') -> Optional[VisionFrame]:
 	if is_image(image_path):
+		flag = cv2.IMREAD_COLOR
+
+		if color_mode == 'rgba':
+			flag = cv2.IMREAD_UNCHANGED
+
 		if is_windows():
 			image_buffer = numpy.fromfile(image_path, dtype = numpy.uint8)
-			return cv2.imdecode(image_buffer, cv2.IMREAD_COLOR)
-		return cv2.imread(image_path)
+			return cv2.imdecode(image_buffer, flag)
+		return cv2.imread(image_path, flag)
 	return None
 
 
@@ -66,26 +70,16 @@ def restrict_image_resolution(image_path : str, resolution : Resolution) -> Reso
 	return resolution
 
 
-def create_image_resolutions(resolution : Resolution) -> List[str]:
-	resolutions = []
-	temp_resolutions = []
-
-	if resolution:
-		width, height = resolution
-		temp_resolutions.append(normalize_resolution(resolution))
-		for image_template_size in facefusion.choices.image_template_sizes:
-			temp_resolutions.append(normalize_resolution((width * image_template_size, height * image_template_size)))
-		temp_resolutions = sorted(set(temp_resolutions))
-		for temp_resolution in temp_resolutions:
-			resolutions.append(pack_resolution(temp_resolution))
-	return resolutions
+@lru_cache(maxsize = 64)
+def read_static_video_frame(video_path : str, frame_number : int = 0) -> Optional[VisionFrame]:
+	return read_video_frame(video_path, frame_number)
 
 
 def read_video_frame(video_path : str, frame_number : int = 0) -> Optional[VisionFrame]:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
 
-		if video_capture.isOpened():
+		if video_capture and video_capture.isOpened():
 			frame_total = video_capture.get(cv2.CAP_PROP_FRAME_COUNT)
 
 			with thread_semaphore():
@@ -102,7 +96,7 @@ def count_video_frame_total(video_path : str) -> int:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
 
-		if video_capture.isOpened():
+		if video_capture and video_capture.isOpened():
 			with thread_semaphore():
 				video_frame_total = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
 				return video_frame_total
@@ -122,7 +116,7 @@ def detect_video_fps(video_path : str) -> Optional[float]:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
 
-		if video_capture.isOpened():
+		if video_capture and video_capture.isOpened():
 			with thread_semaphore():
 				video_fps = video_capture.get(cv2.CAP_PROP_FPS)
 				return video_fps
@@ -175,7 +169,7 @@ def detect_video_resolution(video_path : str) -> Optional[Resolution]:
 	if is_video(video_path):
 		video_capture = get_video_capture(video_path)
 
-		if video_capture.isOpened():
+		if video_capture and video_capture.isOpened():
 			with thread_semaphore():
 				width = video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)
 				height = video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
@@ -192,22 +186,10 @@ def restrict_video_resolution(video_path : str, resolution : Resolution) -> Reso
 	return resolution
 
 
-def create_video_resolutions(resolution : Resolution) -> List[str]:
-	resolutions = []
-	temp_resolutions = []
-
-	if resolution:
-		width, height = resolution
-		temp_resolutions.append(normalize_resolution(resolution))
-		for video_template_size in facefusion.choices.video_template_sizes:
-			if width > height:
-				temp_resolutions.append(normalize_resolution((video_template_size * width / height, video_template_size)))
-			else:
-				temp_resolutions.append(normalize_resolution((video_template_size, video_template_size * height / width)))
-		temp_resolutions = sorted(set(temp_resolutions))
-		for temp_resolution in temp_resolutions:
-			resolutions.append(pack_resolution(temp_resolution))
-	return resolutions
+def scale_resolution(resolution : Resolution, scale : Scale) -> Resolution:
+	resolution = (int(resolution[0] * scale), int(resolution[1] * scale))
+	resolution = normalize_resolution(resolution)
+	return resolution
 
 
 def normalize_resolution(resolution : Tuple[float, float]) -> Resolution:
@@ -250,26 +232,48 @@ def restrict_frame(vision_frame : VisionFrame, resolution : Resolution) -> Visio
 	return vision_frame
 
 
-def fit_frame(vision_frame : VisionFrame, resolution: Resolution) -> VisionFrame:
-	fit_width, fit_height = resolution
+def fit_contain_frame(vision_frame : VisionFrame, resolution : Resolution) -> VisionFrame:
+	contain_width, contain_height = resolution
 	height, width = vision_frame.shape[:2]
-	scale = min(fit_height / height, fit_width / width)
+	scale = min(contain_height / height, contain_width / width)
 	new_width = int(width * scale)
 	new_height = int(height * scale)
-	paste_vision_frame = cv2.resize(vision_frame, (new_width, new_height))
-	x_pad = (fit_width - new_width) // 2
-	y_pad = (fit_height - new_height) // 2
-	temp_vision_frame = numpy.pad(paste_vision_frame, ((y_pad, fit_height - new_height - y_pad), (x_pad, fit_width - new_width - x_pad), (0, 0)))
+	start_x = max(0, (contain_width - new_width) // 2)
+	start_y = max(0, (contain_height - new_height) // 2)
+	end_x = max(0, contain_width - new_width - start_x)
+	end_y = max(0, contain_height - new_height - start_y)
+	temp_vision_frame = cv2.resize(vision_frame, (new_width, new_height))
+	temp_vision_frame = numpy.pad(temp_vision_frame, ((start_y, end_y), (start_x, end_x), (0, 0)))
 	return temp_vision_frame
 
 
-def normalize_frame_color(vision_frame : VisionFrame) -> VisionFrame:
-	return cv2.cvtColor(vision_frame, cv2.COLOR_BGR2RGB)
+def fit_cover_frame(vision_frame : VisionFrame, resolution : Resolution) -> VisionFrame:
+	cover_width, cover_height = resolution
+	height, width = vision_frame.shape[:2]
+	scale = max(cover_width / width, cover_height / height)
+	new_width = int(width * scale)
+	new_height = int(height * scale)
+	start_x = max(0, (new_width - cover_width) // 2)
+	start_y = max(0, (new_height - cover_height) // 2)
+	end_x = min(new_width, start_x + cover_width)
+	end_y = min(new_height, start_y + cover_height)
+	temp_vision_frame = cv2.resize(vision_frame, (new_width, new_height))
+	temp_vision_frame = temp_vision_frame[start_y:end_y, start_x:end_x]
+	return temp_vision_frame
+
+
+def obscure_frame(vision_frame : VisionFrame) -> VisionFrame:
+	return cv2.GaussianBlur(vision_frame, (99, 99), 0)
+
+
+def blend_frame(source_vision_frame : VisionFrame, target_vision_frame : VisionFrame, blend_factor : float) -> VisionFrame:
+	blend_vision_frame = cv2.addWeighted(source_vision_frame, 1 - blend_factor, target_vision_frame, blend_factor, 0)
+	return blend_vision_frame
 
 
 def conditional_match_frame_color(source_vision_frame : VisionFrame, target_vision_frame : VisionFrame) -> VisionFrame:
-	histogram_factor = calc_histogram_difference(source_vision_frame, target_vision_frame)
-	target_vision_frame = blend_vision_frames(target_vision_frame, match_frame_color(source_vision_frame, target_vision_frame), histogram_factor)
+	histogram_factor = calculate_histogram_difference(source_vision_frame, target_vision_frame)
+	target_vision_frame = blend_frame(target_vision_frame, match_frame_color(source_vision_frame, target_vision_frame), histogram_factor)
 	return target_vision_frame
 
 
@@ -291,7 +295,7 @@ def equalize_frame_color(source_vision_frame : VisionFrame, target_vision_frame 
 	return target_vision_frame
 
 
-def calc_histogram_difference(source_vision_frame : VisionFrame, target_vision_frame : VisionFrame) -> float:
+def calculate_histogram_difference(source_vision_frame : VisionFrame, target_vision_frame : VisionFrame) -> float:
 	histogram_source = cv2.calcHist([cv2.cvtColor(source_vision_frame, cv2.COLOR_BGR2HSV)], [ 0, 1 ], None, [ 50, 60 ], [ 0, 180, 0, 256 ])
 	histogram_target = cv2.calcHist([cv2.cvtColor(target_vision_frame, cv2.COLOR_BGR2HSV)], [ 0, 1 ], None, [ 50, 60 ], [ 0, 180, 0, 256 ])
 	histogram_difference = float(numpy.interp(cv2.compareHist(histogram_source, histogram_target, cv2.HISTCMP_CORREL), [ -1, 1 ], [ 0, 1 ]))
@@ -304,11 +308,11 @@ def blend_vision_frames(source_vision_frame : VisionFrame, target_vision_frame :
 
 
 def create_tile_frames(vision_frame : VisionFrame, size : Size) -> Tuple[List[VisionFrame], int, int]:
-	vision_frame = numpy.pad(vision_frame, ((size[1], size[1]), (size[1], size[1]), (0, 0)))
 	tile_width = size[0] - 2 * size[2]
-	pad_size_bottom = size[2] + tile_width - vision_frame.shape[0] % tile_width
-	pad_size_right = size[2] + tile_width - vision_frame.shape[1] % tile_width
-	pad_vision_frame = numpy.pad(vision_frame, ((size[2], pad_size_bottom), (size[2], pad_size_right), (0, 0)))
+	pad_size_top = size[1] + size[2]
+	pad_size_bottom = pad_size_top + tile_width - (vision_frame.shape[0] + 2 * size[1]) % tile_width
+	pad_size_right = pad_size_top + tile_width - (vision_frame.shape[1] + 2 * size[1]) % tile_width
+	pad_vision_frame = numpy.pad(vision_frame, ((pad_size_top, pad_size_bottom), (pad_size_top, pad_size_right), (0, 0)))
 	pad_height, pad_width = pad_vision_frame.shape[:2]
 	row_range = range(size[2], pad_height - size[2], tile_width)
 	col_range = range(size[2], pad_width - size[2], tile_width)
@@ -343,3 +347,19 @@ def merge_tile_frames(tile_vision_frames : List[VisionFrame], temp_width : int, 
 
 	merge_vision_frame = merge_vision_frame[size[1] : size[1] + temp_height, size[1]: size[1] + temp_width, :]
 	return merge_vision_frame
+
+
+def extract_vision_mask(vision_frame : VisionFrame) -> Mask:
+	if vision_frame.ndim == 3 and vision_frame.shape[2] == 4:
+		return vision_frame[:, :, 3]
+	return numpy.full(vision_frame.shape[:2], 255, dtype = numpy.uint8)
+
+
+def merge_vision_mask(vision_frame : VisionFrame, vision_mask : Mask) -> VisionFrame:
+	return numpy.dstack((vision_frame[:, :, :3], vision_mask))
+
+
+def conditional_merge_vision_mask(vision_frame : VisionFrame, vision_mask : Mask) -> VisionFrame:
+	if numpy.any(vision_mask < 255):
+		return merge_vision_mask(vision_frame, vision_mask)
+	return vision_frame

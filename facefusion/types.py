@@ -39,7 +39,7 @@ Face = namedtuple('Face',
 	'landmark_set',
 	'angle',
 	'embedding',
-	'normed_embedding',
+	'embedding_norm',
 	'gender',
 	'age',
 	'race'
@@ -47,11 +47,27 @@ Face = namedtuple('Face',
 FaceSet : TypeAlias = Dict[str, List[Face]]
 FaceStore = TypedDict('FaceStore',
 {
-	'static_faces' : FaceSet,
-	'reference_faces' : FaceSet
+	'static_faces' : FaceSet
 })
-VideoPoolSet : TypeAlias = Dict[str, cv2.VideoCapture]
 
+Language = Literal['en']
+Locales : TypeAlias = Dict[Language, Dict[str, Any]]
+LocalePoolSet : TypeAlias = Dict[str, Locales]
+
+VideoCaptureSet : TypeAlias = Dict[str, cv2.VideoCapture]
+VideoWriterSet : TypeAlias = Dict[str, cv2.VideoWriter]
+CameraCaptureSet : TypeAlias = Dict[str, cv2.VideoCapture]
+VideoPoolSet = TypedDict('VideoPoolSet',
+{
+	'capture': VideoCaptureSet,
+	'writer': VideoWriterSet
+})
+CameraPoolSet = TypedDict('CameraPoolSet',
+{
+	'capture': CameraCaptureSet
+})
+
+ColorMode = Literal['rgb', 'rgba']
 VisionFrame : TypeAlias = NDArray[Any]
 Mask : TypeAlias = NDArray[Any]
 Points : TypeAlias = NDArray[Any]
@@ -67,27 +83,26 @@ AudioFrame : TypeAlias = NDArray[Any]
 Spectrogram : TypeAlias = NDArray[Any]
 Mel : TypeAlias = NDArray[Any]
 MelFilterBank : TypeAlias = NDArray[Any]
+Voice : TypeAlias = NDArray[Any]
+VoiceChunk : TypeAlias = NDArray[Any]
 
 Fps : TypeAlias = float
 Duration : TypeAlias = float
+Color : TypeAlias = Tuple[int, int, int, int]
 Padding : TypeAlias = Tuple[int, int, int, int]
+Margin : TypeAlias = Tuple[int, int, int, int]
 Orientation = Literal['landscape', 'portrait']
 Resolution : TypeAlias = Tuple[int, int]
 
 ProcessState = Literal['checking', 'processing', 'stopping', 'pending']
-QueuePayload = TypedDict('QueuePayload',
-{
-	'frame_number' : int,
-	'frame_path' : str
-})
 Args : TypeAlias = Dict[str, Any]
 UpdateProgress : TypeAlias = Callable[[int], None]
-ProcessFrames : TypeAlias = Callable[[List[str], List[QueuePayload], UpdateProgress], None]
 ProcessStep : TypeAlias = Callable[[str, int, Args], bool]
 
 Content : TypeAlias = Dict[str, Any]
 
-Commands : TypeAlias = List[str]
+Command : TypeAlias = str
+CommandSet : TypeAlias = Dict[str, List[Command]]
 
 WarpTemplate = Literal['arcface_112_v1', 'arcface_112_v2', 'arcface_128', 'dfl_whole_face', 'ffhq_512', 'mtcnn_512', 'styleganex_384']
 WarpTemplateSet : TypeAlias = Dict[WarpTemplate, NDArray[Any]]
@@ -97,15 +112,15 @@ ErrorCode = Literal[0, 1, 2, 3, 4]
 LogLevel = Literal['error', 'warn', 'info', 'debug']
 LogLevelSet : TypeAlias = Dict[LogLevel, int]
 
-TableHeaders = List[str]
-TableContents = List[List[Any]]
+TableHeader : TypeAlias = str
+TableContent : TypeAlias = Any
 
-FaceDetectorModel = Literal['many', 'retinaface', 'scrfd', 'yolo_face']
+FaceDetectorModel = Literal['many', 'retinaface', 'scrfd', 'yolo_face', 'yunet']
 FaceLandmarkerModel = Literal['many', '2dfan4', 'peppa_wutz']
 FaceDetectorSet : TypeAlias = Dict[FaceDetectorModel, List[str]]
 FaceSelectorMode = Literal['many', 'one', 'reference']
 FaceSelectorOrder = Literal['left-right', 'right-left', 'top-bottom', 'bottom-top', 'small-large', 'large-small', 'best-worst', 'worst-best']
-FaceOccluderModel = Literal['xseg_1', 'xseg_2', 'xseg_3']
+FaceOccluderModel = Literal['many', 'xseg_1', 'xseg_2', 'xseg_3']
 FaceParserModel = Literal['bisenet_resnet_18', 'bisenet_resnet_34']
 FaceMaskType = Literal['box', 'occlusion', 'area', 'region']
 FaceMaskArea = Literal['upper-face', 'lower-face', 'mouth']
@@ -113,16 +128,18 @@ FaceMaskRegion = Literal['skin', 'left-eyebrow', 'right-eyebrow', 'left-eye', 'r
 FaceMaskRegionSet : TypeAlias = Dict[FaceMaskRegion, int]
 FaceMaskAreaSet : TypeAlias = Dict[FaceMaskArea, List[int]]
 
+VoiceExtractorModel = Literal['kim_vocal_1', 'kim_vocal_2', 'uvr_mdxnet']
+
 AudioFormat = Literal['flac', 'm4a', 'mp3', 'ogg', 'opus', 'wav']
 ImageFormat = Literal['bmp', 'jpeg', 'png', 'tiff', 'webp']
-VideoFormat = Literal['avi', 'm4v', 'mkv', 'mov', 'mp4', 'webm']
+VideoFormat = Literal['avi', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mxf', 'webm', 'wmv']
 TempFrameFormat = Literal['bmp', 'jpeg', 'png', 'tiff']
 AudioTypeSet : TypeAlias = Dict[AudioFormat, str]
 ImageTypeSet : TypeAlias = Dict[ImageFormat, str]
 VideoTypeSet : TypeAlias = Dict[VideoFormat, str]
 
 AudioEncoder = Literal['flac', 'aac', 'libmp3lame', 'libopus', 'libvorbis', 'pcm_s16le', 'pcm_s32le']
-VideoEncoder = Literal['libx264', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc', 'h264_amf', 'hevc_amf', 'h264_qsv', 'hevc_qsv', 'h264_videotoolbox', 'hevc_videotoolbox', 'rawvideo']
+VideoEncoder = Literal['libx264', 'libx264rgb', 'libx265', 'libvpx-vp9', 'h264_nvenc', 'hevc_nvenc', 'h264_amf', 'hevc_amf', 'h264_qsv', 'hevc_qsv', 'h264_videotoolbox', 'hevc_videotoolbox', 'rawvideo']
 EncoderSet = TypedDict('EncoderSet',
 {
 	'audio' : List[AudioEncoder],
@@ -130,6 +147,7 @@ EncoderSet = TypedDict('EncoderSet',
 })
 VideoPreset = Literal['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 
+BenchmarkMode = Literal['warm', 'cold']
 BenchmarkResolution = Literal['240p', '360p', '540p', '720p', '1080p', '1440p', '2160p']
 BenchmarkSet : TypeAlias = Dict[BenchmarkResolution, str]
 BenchmarkCycleSet = TypedDict('BenchmarkCycleSet',
@@ -149,8 +167,8 @@ ModelOptions : TypeAlias = Dict[str, Any]
 ModelSet : TypeAlias = Dict[str, ModelOptions]
 ModelInitializer : TypeAlias = NDArray[Any]
 
-ExecutionProvider = Literal['cpu', 'coreml', 'cuda', 'directml', 'openvino', 'rocm', 'tensorrt']
-ExecutionProviderValue = Literal['CPUExecutionProvider', 'CoreMLExecutionProvider', 'CUDAExecutionProvider', 'DmlExecutionProvider', 'OpenVINOExecutionProvider', 'ROCMExecutionProvider', 'TensorrtExecutionProvider']
+ExecutionProvider = Literal['cpu', 'coreml', 'cuda', 'directml', 'openvino', 'migraphx', 'rocm', 'tensorrt']
+ExecutionProviderValue = Literal['CPUExecutionProvider', 'CoreMLExecutionProvider', 'CUDAExecutionProvider', 'DmlExecutionProvider', 'OpenVINOExecutionProvider', 'MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'TensorrtExecutionProvider']
 ExecutionProviderSet : TypeAlias = Dict[ExecutionProvider, ExecutionProviderValue]
 InferenceSessionProvider : TypeAlias = Any
 ValueAndUnit = TypedDict('ValueAndUnit',
@@ -189,7 +207,7 @@ ExecutionDevice = TypedDict('ExecutionDevice',
 	'framework' : ExecutionDeviceFramework,
 	'product' : ExecutionDeviceProduct,
 	'video_memory' : ExecutionDeviceVideoMemory,
-	'temperature': ExecutionDeviceTemperature,
+	'temperature' : ExecutionDeviceTemperature,
 	'utilization' : ExecutionDeviceUtilization
 })
 
@@ -252,10 +270,12 @@ StateKey = Literal\
 	'output_pattern',
 	'download_providers',
 	'download_scope',
+	'benchmark_mode',
 	'benchmark_resolutions',
 	'benchmark_cycle_count',
 	'face_detector_model',
 	'face_detector_size',
+	'face_detector_margin',
 	'face_detector_angles',
 	'face_detector_score',
 	'face_landmarker_model',
@@ -276,28 +296,28 @@ StateKey = Literal\
 	'face_mask_regions',
 	'face_mask_blur',
 	'face_mask_padding',
+	'voice_extractor_model',
 	'trim_frame_start',
 	'trim_frame_end',
 	'temp_frame_format',
 	'keep_temp',
 	'output_image_quality',
-	'output_image_resolution',
+	'output_image_scale',
 	'output_audio_encoder',
 	'output_audio_quality',
 	'output_audio_volume',
 	'output_video_encoder',
 	'output_video_preset',
 	'output_video_quality',
-	'output_video_resolution',
+	'output_video_scale',
 	'output_video_fps',
 	'processors',
 	'open_browser',
 	'ui_layouts',
 	'ui_workflow',
-	'execution_device_id',
+	'execution_device_ids',
 	'execution_providers',
 	'execution_thread_count',
-	'execution_queue_count',
 	'video_memory_strategy',
 	'system_memory_limit',
 	'log_level',
@@ -318,12 +338,14 @@ State = TypedDict('State',
 	'source_pattern' : str,
 	'target_pattern' : str,
 	'output_pattern' : str,
-	'download_providers': List[DownloadProvider],
-	'download_scope': DownloadScope,
-	'benchmark_resolutions': List[BenchmarkResolution],
-	'benchmark_cycle_count': int,
+	'download_providers' : List[DownloadProvider],
+	'download_scope' : DownloadScope,
+	'benchmark_mode' : BenchmarkMode,
+	'benchmark_resolutions' : List[BenchmarkResolution],
+	'benchmark_cycle_count' : int,
 	'face_detector_model' : FaceDetectorModel,
 	'face_detector_size' : str,
+	'face_detector_margin': Margin,
 	'face_detector_angles' : List[Angle],
 	'face_detector_score' : Score,
 	'face_landmarker_model' : FaceLandmarkerModel,
@@ -344,28 +366,28 @@ State = TypedDict('State',
 	'face_mask_regions' : List[FaceMaskRegion],
 	'face_mask_blur' : float,
 	'face_mask_padding' : Padding,
+	'voice_extractor_model': VoiceExtractorModel,
 	'trim_frame_start' : int,
 	'trim_frame_end' : int,
 	'temp_frame_format' : TempFrameFormat,
 	'keep_temp' : bool,
 	'output_image_quality' : int,
-	'output_image_resolution' : str,
+	'output_image_scale' : Scale,
 	'output_audio_encoder' : AudioEncoder,
 	'output_audio_quality' : int,
 	'output_audio_volume' : int,
 	'output_video_encoder' : VideoEncoder,
 	'output_video_preset' : VideoPreset,
 	'output_video_quality' : int,
-	'output_video_resolution' : str,
+	'output_video_scale' : Scale,
 	'output_video_fps' : float,
 	'processors' : List[str],
 	'open_browser' : bool,
 	'ui_layouts' : List[str],
 	'ui_workflow' : UiWorkflow,
-	'execution_device_id' : str,
+	'execution_device_ids' : List[int],
 	'execution_providers' : List[ExecutionProvider],
 	'execution_thread_count' : int,
-	'execution_queue_count' : int,
 	'video_memory_strategy' : VideoMemoryStrategy,
 	'system_memory_limit' : int,
 	'log_level' : LogLevel,
